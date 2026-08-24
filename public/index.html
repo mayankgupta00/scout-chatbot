@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scout</title>
+<link rel="icon" href="/scout-logo.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --pine: #1B3A2F;
+    --pine-light: #2E5445;
+    --amber: #E2A33D;
+    --amber-dark: #C4841F;
+    --cream: #F6F1E4;
+    --cream-warm: #EFE8D6;
+    --sage: #7FA88F;
+    --charcoal: #232821;
+    --muted: #6B7268;
+    --border: #E2DCC8;
+    --danger: #B23B3B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--cream-warm);
+    background-image: radial-gradient(circle at 15% 10%, rgba(127,168,143,0.15), transparent 40%),
+                       radial-gradient(circle at 85% 90%, rgba(226,163,61,0.12), transparent 45%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+    color: var(--charcoal);
+  }
+
+  .chat-card {
+    width: 100%;
+    max-width: 440px;
+    height: 660px;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 50px -20px rgba(27,58,47,0.35);
+  }
+
+  .chat-header {
+    padding: 18px 22px;
+    background: var(--pine);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .chat-header .logo { width: 38px; height: 38px; flex-shrink: 0; }
+  .chat-header .logo svg { display: block; width: 100%; height: 100%; }
+  .chat-header .title-block { flex: 1; min-width: 0; }
+  .chat-header h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--cream);
+    letter-spacing: 0.2px;
+  }
+  .chat-header p {
+    font-size: 12px;
+    color: var(--sage);
+    margin: 2px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chat-header p .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #8FD4A8;
+    box-shadow: 0 0 0 3px rgba(143,212,168,0.25);
+  }
+  .chat-header .logout {
+    background: none;
+    border: none;
+    color: var(--sage);
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    text-decoration: underline;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .chat-header .logout:hover { color: var(--cream); }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .messages::-webkit-scrollbar { width: 6px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+  .row { display: flex; align-items: flex-end; gap: 8px; max-width: 88%; }
+  .row.user { align-self: flex-end; flex-direction: row-reverse; }
+  .row.bot { align-self: flex-start; }
+
+  .avatar {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--pine);
+  }
+  .avatar svg { width: 16px; height: 16px; }
+
+  .msg {
+    padding: 11px 15px;
+    border-radius: 16px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .row.user .msg { background: var(--pine); color: var(--cream); border-bottom-right-radius: 4px; }
+  .row.bot .msg { background: var(--cream-warm); border: 1px solid var(--border); color: var(--charcoal); border-bottom-left-radius: 4px; }
+
+  .thinking { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-style: italic; }
+  .thinking .compass-spin { width: 18px; height: 18px; animation: spin 1.6s linear infinite; transform-origin: 50% 50%; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .thinking .compass-spin { animation: none; } }
+
+  .input-row { display: flex; gap: 8px; padding: 16px; border-top: 1px solid var(--border); background: var(--cream); }
+  .input-row input {
+    flex: 1; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border);
+    font-size: 14px; font-family: 'Inter', sans-serif; outline: none;
+    background: var(--cream-warm); color: var(--charcoal);
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .input-row input::placeholder { color: var(--muted); }
+  .input-row input:focus { border-color: var(--amber); background: var(--cream); }
+  .input-row button {
+    padding: 0 20px; border-radius: 12px; border: none; background: var(--amber);
+    color: var(--pine); font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: background 0.15s ease;
+  }
+  .input-row button:hover:not(:disabled) { background: var(--amber-dark); color: var(--cream); }
+  .input-row button:disabled { opacity: 0.5; cursor: default; }
+
+  .handoff-row { padding: 0 16px 14px; text-align: center; background: var(--cream); }
+  .handoff-row button {
+    background: none; border: none; color: var(--muted); font-size: 12.5px;
+    font-family: 'Inter', sans-serif; text-decoration: underline; cursor: pointer; padding: 4px;
+  }
+  .handoff-row button:hover { color: var(--pine); }
+
+  /* --- Login / signup screen --- */
+  .auth-card { padding: 40px 32px; display: flex; flex-direction: column; gap: 16px; height: 100%; overflow-y: auto; }
+  .auth-card .auth-logo { width: 48px; height: 48px; margin: 0 auto 4px; }
+  .auth-card .auth-logo svg { width: 100%; height: 100%; }
+  .auth-card h2 { font-family: 'Fraunces', serif; font-size: 22px; text-align: center; margin: 0; color: var(--pine); }
+  .auth-card p.sub { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  .auth-card label { font-size: 13px; color: var(--charcoal); font-weight: 500; margin-bottom: 4px; display: block; }
+  .auth-card input {
+    width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border);
+    font-size: 14px; font-family: 'Inter', sans-serif; outline: none;
+    background: var(--cream-warm); color: var(--charcoal); margin-bottom: 14px;
+  }
+  .auth-card input:focus { border-color: var(--amber); }
+  .auth-card button.primary {
+    padding: 12px; border-radius: 10px; border: none; background: var(--amber);
+    color: var(--pine); font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer;
+  }
+  .auth-card button.primary:hover:not(:disabled) { background: var(--amber-dark); color: var(--cream); }
+  .auth-card button.primary:disabled { opacity: 0.5; cursor: default; }
+  .auth-card .switch { text-align: center; font-size: 13px; color: var(--muted); }
+  .auth-card .switch button { background: none; border: none; color: var(--pine); text-decoration: underline; cursor: pointer; font-size: 13px; font-family: 'Inter', sans-serif; }
+  .auth-card .error { color: var(--danger); font-size: 13px; margin: -8px 0 4px; }
+</style>
+</head>
+<body>
+
+<div class="chat-card" id="app-root"></div>
+
+<script>
+  const API = ''; // same-origin
+
+  // ---------- language dictionary for the chat UI ----------
+  const UI_TEXT = {
+    en: { greeting: "Hi, I'm Scout! I can answer questions about Service Code Provisioning — carriers, routes, campaigns, and more. What do you need help with?", placeholder: "Ask Scout a question...", send: "Send", talkHuman: "Talk to a person", confirmed: "Thanks! I've sent this conversation to our support team. They'll follow up at your account email soon." },
+    es: { greeting: "¡Hola, soy Scout! Puedo responder preguntas sobre Service Code Provisioning: operadores, rutas, campañas y más. ¿En qué te ayudo?", placeholder: "Escribe tu pregunta...", send: "Enviar", talkHuman: "Hablar con una persona", confirmed: "¡Gracias! Envié esta conversación a nuestro equipo de soporte. Te contactarán pronto." },
+    fr: { greeting: "Bonjour, je suis Scout ! Comment puis-je vous aider ?", placeholder: "Posez votre question...", send: "Envoyer", talkHuman: "Parler à une personne", confirmed: "Merci ! J'ai transmis cette conversation à notre équipe." },
+    de: { greeting: "Hallo, ich bin Scout! Wie kann ich helfen?", placeholder: "Stellen Sie Ihre Frage...", send: "Senden", talkHuman: "Mit einer Person sprechen", confirmed: "Danke! Ich habe dieses Gespräch an unser Team weitergeleitet." },
+    pt: { greeting: "Olá, eu sou o Scout! Como posso ajudar?", placeholder: "Digite sua pergunta...", send: "Enviar", talkHuman: "Falar com uma pessoa", confirmed: "Obrigado! Enviei esta conversa para nossa equipe de suporte." },
+    hi: { greeting: "नमस्ते, मैं Scout हूँ! मैं आपकी कैसे मदद करूँ?", placeholder: "अपना सवाल लिखें...", send: "भेजें", talkHuman: "किसी व्यक्ति से बात करें", confirmed: "धन्यवाद! मैंने यह बातचीत हमारी सपोर्ट टीम को भेज दी है।" },
+    ar: { greeting: "مرحبًا، أنا Scout! كيف يمكنني مساعدتك؟", placeholder: "اكتب سؤالك...", send: "إرسال", talkHuman: "التحدث مع شخص", confirmed: "شكرًا! أرسلت هذه المحادثة إلى فريق الدعم لدينا." },
+    zh: { greeting: "你好，我是 Scout！有什么可以帮你的？", placeholder: "输入你的问题...", send: "发送", talkHuman: "联系人工客服", confirmed: "谢谢！我已将对话发送给我们的支持团队。" },
+    ja: { greeting: "こんにちは、Scoutです！どうされましたか？", placeholder: "質問を入力...", send: "送信", talkHuman: "担当者に相談する", confirmed: "ありがとうございます！この会話をサポートチームに送りました。" },
+  };
+  function detectLang() {
+    const code = (navigator.language || 'en').slice(0, 2).toLowerCase();
+    return UI_TEXT[code] ? code : 'en';
+  }
+  const lang = detectLang();
+  const t = UI_TEXT[lang];
+  document.documentElement.lang = lang;
+
+  const BOT_AVATAR = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="60,26 71,60 60,52 49,60" fill="#E2A33D"/>
+    <polygon points="60,94 71,60 60,68 49,60" fill="#F6F1E4" opacity="0.85"/>
+    <circle cx="60" cy="60" r="6" fill="#F6F1E4"/>
+  </svg>`;
+  const LOGO_SVG = `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="57" fill="#1B3A2F"/>
+    <circle cx="60" cy="60" r="57" fill="none" stroke="#E2A33D" stroke-width="2.5"/>
+    <circle cx="60" cy="60" r="45" fill="none" stroke="#F6F1E4" stroke-width="1" opacity="0.25"/>
+    <polygon points="60,26 71,60 60,52 49,60" fill="#E2A33D"/>
+    <polygon points="60,94 71,60 60,68 49,60" fill="#F6F1E4" opacity="0.85"/>
+    <circle cx="60" cy="60" r="5" fill="#F6F1E4"/>
+  </svg>`;
+
+  const root = document.getElementById('app-root');
+
+  // ---------- simple router: show auth screen or chat screen ----------
+  function getToken() { return localStorage.getItem('scout_token'); }
+  function setToken(token) { localStorage.setItem('scout_token', token); }
+  function clearToken() { localStorage.removeItem('scout_token'); }
+
+  function boot() {
+    if (getToken()) {
+      renderChat();
+    } else {
+      renderAuth('login');
+    }
+  }
+
+  // ---------- AUTH SCREEN ----------
+  function renderAuth(mode) {
+    const isLogin = mode === 'login';
+    root.innerHTML = `
+      <div class="auth-card">
+        <div class="auth-logo">${LOGO_SVG}</div>
+        <h2>${isLogin ? 'Welcome back' : 'Create your account'}</h2>
+        <p class="sub">${isLogin ? 'Log in to pick up where you left off with Scout.' : 'Sign up to start chatting with Scout.'}</p>
+        <div id="auth-error" class="error" style="display:none"></div>
+        <div>
+          <label>Email</label>
+          <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
+          <label>Password</label>
+          <input type="password" id="auth-password" placeholder="${isLogin ? 'Your password' : 'At least 6 characters'}" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />
+        </div>
+        <button class="primary" id="auth-submit">${isLogin ? 'Log in' : 'Sign up'}</button>
+        <div class="switch">
+          ${isLogin ? "New here?" : "Already have an account?"}
+          <button id="auth-switch">${isLogin ? 'Sign up' : 'Log in'}</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('auth-switch').addEventListener('click', () => renderAuth(isLogin ? 'signup' : 'login'));
+
+    const submitBtn = document.getElementById('auth-submit');
+    const errorEl = document.getElementById('auth-error');
+    const emailEl = document.getElementById('auth-email');
+    const passwordEl = document.getElementById('auth-password');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+
+    async function submit() {
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+      if (!email || !password) {
+        showError('Please fill in both fields.');
+        return;
+      }
+      submitBtn.disabled = true;
+      errorEl.style.display = 'none';
+      try {
+        const res = await fetch(`${API}/api/${isLogin ? 'login' : 'signup'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          showError(data.error);
+        } else {
+          setToken(data.token);
+          renderChat();
+        }
+      } catch (err) {
+        showError('Could not reach the server. Is it running?');
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    submitBtn.addEventListener('click', submit);
+    passwordEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  }
+
+  // ---------- CHAT SCREEN ----------
+  async function renderChat() {
+    root.innerHTML = `
+      <div class="chat-header">
+        <div class="logo">${LOGO_SVG}</div>
+        <div class="title-block">
+          <h1>Scout</h1>
+          <p><span class="dot"></span>Your support assistant</p>
+        </div>
+        <button class="logout" id="logout-btn">Log out</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="input-row">
+        <input type="text" id="input" placeholder="${t.placeholder}" autocomplete="off" />
+        <button id="send">${t.send}</button>
+      </div>
+      <div class="handoff-row">
+        <button id="talk-to-human">${t.talkHuman}</button>
+      </div>
+    `;
+
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+
+    function addBubble(text, who) {
+      const row = document.createElement('div');
+      row.className = `row ${who}`;
+      if (who === 'bot') {
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.innerHTML = BOT_AVATAR;
+        row.appendChild(avatar);
+      }
+      const bubble = document.createElement('div');
+      bubble.className = 'msg';
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return row;
+    }
+
+    function addThinking() {
+      const row = document.createElement('div');
+      row.className = 'row bot';
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.innerHTML = BOT_AVATAR;
+      row.appendChild(avatar);
+      const bubble = document.createElement('div');
+      bubble.className = 'msg thinking';
+      bubble.innerHTML = `<svg class="compass-spin" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="55" fill="none" stroke="#7FA88F" stroke-width="6"/>
+        <polygon points="60,26 71,60 60,52 49,60" fill="#E2A33D"/>
+        <polygon points="60,94 71,60 60,68 49,60" fill="#1B3A2F" opacity="0.6"/>
+      </svg> Scout is looking that up...`;
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return row;
+    }
+
+    function authHeaders() {
+      return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` };
+    }
+
+    // Load this account's own past conversation, if any.
+    try {
+      const res = await fetch(`${API}/api/history`, { headers: authHeaders() });
+      if (res.status === 401) { clearToken(); renderAuth('login'); return; }
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        data.messages.forEach((m) => addBubble(m.content, m.role === 'user' ? 'user' : 'bot'));
+      } else {
+        addBubble(t.greeting, 'bot');
+      }
+    } catch (err) {
+      addBubble(t.greeting, 'bot');
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      inputEl.value = '';
+      sendBtn.disabled = true;
+      addBubble(text, 'user');
+
+      const thinkingRow = addThinking();
+      try {
+        const res = await fetch(`${API}/api/chat`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ message: text }),
+        });
+        if (res.status === 401) { clearToken(); renderAuth('login'); return; }
+        const data = await res.json();
+        thinkingRow.remove();
+        if (data.error) {
+          addBubble('Sorry, something went wrong: ' + data.error, 'bot');
+        } else {
+          addBubble(data.reply, 'bot');
+        }
+      } catch (err) {
+        thinkingRow.remove();
+        addBubble('Sorry, I could not reach the server.', 'bot');
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+    document.getElementById('talk-to-human').addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${API}/api/escalate`, { method: 'POST', headers: authHeaders() });
+        if (res.status === 401) { clearToken(); renderAuth('login'); return; }
+        const data = await res.json();
+        addBubble(data.error ? data.error : t.confirmed, 'bot');
+      } catch (err) {
+        addBubble('Sorry, I could not reach the server.', 'bot');
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      clearToken();
+      renderAuth('login');
+    });
+  }
+
+  boot();
+</script>
+
+</body>
+</html>

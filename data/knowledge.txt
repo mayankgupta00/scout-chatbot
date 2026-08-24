@@ -1,0 +1,264 @@
+Service Code Provisioning (SCP) — Business, Functional, UI & 10DLC Reference
+Application: MMX (Tata Communications) Module: Customer > Service Code Provisioning — also referred to as SCP Region: US only Document date: July 31, 2026 Purpose: This document is written for AI training. Every rule, condition, and flow step is either directly observed in system screenshots, confirmed against the live system by the module owner, or sourced from an internal architecture reference document as noted. Statements are written to be unambiguous so the AI can answer user questions about this module without access to the live UI.
+Document structure: Sections 1–8 cover the portal-level business, functional, and UI flow — Customer, Service Code Details, Carrier, MT Route, MO Route, and DR Route configuration. Sections 9–23 cover the underlying 10DLC provisioning architecture and API layer — the microservices, Campaign Link/Unlink APIs, provisioning and de-provisioning workflows, Route Templates, Brand ID/Sub-ID rules, TCR Campaigns, and number procurement. Together they describe the complete module end to end.
+LN = 10DLC. The Service Code Type labeled LN in the portal and “10DLC” as used throughout Sections 9–23 are the same underlying concept — 10DLC is what LN actually is under the hood. Service Code Type has three values: LN (10DLC), SC (Short Code), and Toll Free.
+1. Module Purpose
+Service Code Provisioning configures how an SMS service code (a Long Number or Short Code) behaves for a given customer: which carriers it goes through, how outbound (MT) traffic is routed, how inbound (MO) messages are received and matched by keyword, and how delivery receipts (DR) are returned. A single service code record ties together Customer, Carrier, MT Route, MO Route, and DR Route configuration.
+Entry point: Home > Customer > Service Code Provisioning
+2. High-Level Business Flow (End-to-End)
+This is the overall journey a user follows to provision a new service code, in order:
+User navigates to Customer > Service Code Provisioning. The list view loads, showing all existing service codes for the system (paginated, default 50 per page).
+User clicks the Add icon to create a new service code. The Add | Service Code form opens, empty.
+User selects a Customer. This is the anchor field — the Customer decision here is permanent (see Section 3.1).
+User optionally checks Shared and selects a Shared Customer if this service code should be shared across customers.
+User configures Service Code Details: Channel (currently SMS only), Service Code Type (LN or SC), whether this is a new or existing Campaign (Add Campaign checkbox), and the Service Code value itself.
+User adds one or more Carrier mappings — which carriers this Sender ID/Campaign routes through. Mandatory for LN; optional for SC (see 3.2.1).
+User adds one or more MT Route entries — outbound network/supplier pairs. Mandatory for LN; optional for SC.
+User adds one or more MO Route entries — inbound keyword matching and endpoint delivery configuration. Always mandatory, regardless of type.
+User adds one or more DR Route entries — delivery receipt endpoint configuration. Always mandatory, regardless of type.
+User clicks Save. If any mandatory field is missing, a required-field validation blocks the save and the user is returned to the offending field.
+Once saved, the service code appears in the list view. It can subsequently be Viewed (read-only, with PDF export), Edited (all sections except the top-level Customer), or Deleted (with a confirmation prompt).
+This flow is not strictly linear in the UI — Carrier, MT Route, MO Route, and DR Route are independent repeating sections and can be built in any order before Save — but the Customer and Service Code Details sections must be completed first, since every other section depends on them.
+3. Detailed UI Flow, Section by Section
+3.1 Customer Section
+Fields: Customer (mandatory), Shared (checkbox), Shared Customer (conditional).
+Flow and conditions:
+Customer is a searchable dropdown, populated from the customer/account master list (entities shown with their account ID in brackets, e.g. 01DIGITALE S.R.L.S. - 83290).
+If Customer is left blank and Save is clicked, an inline red “required” label appears directly below the field (not a popup or toast), and the save is blocked.
+Customer is only editable at creation time. Once a service code is saved, the Customer field is locked — Edit mode does not allow changing it. If the customer was set up wrong, the record must be deleted and recreated rather than corrected in place.
+If Shared is checked, Shared Customer becomes mandatory and must be selected before Save will succeed. If Shared is unchecked, Shared Customer stays disabled and is not used.
+3.2 Service Code Details Section
+Fields: Channel (mandatory), Service Code Type (mandatory), Add Campaign (checkbox), Campaign ID (mandatory), Service Code (mandatory).
+Flow and conditions:
+Channel dropdown currently offers a single value: SMS.
+Service Code Type dropdown has three values: LN (Long Number — this is the 10DLC service code type; see Sections 9–23 for the full 10DLC architecture), SC (Short Code), and Toll Free.
+The Add Campaign checkbox branches the Campaign ID field’s behavior:
+If checked, Campaign ID becomes a free-text input — the user is defining a brand-new Campaign ID.
+If unchecked, Campaign ID becomes a dropdown populated with existing campaign IDs, filtered by whichever Service Code Type was just selected.
+Service Code is a free-text field for the actual number/code value, but its format is validated based on the selected Service Code Type:
+LN (Long Number): must be exactly 11 digits, numeric only — no decimals, no letters or other characters.
+SC (Short Code): must be 5–6 characters, and alphanumeric values are allowed (not restricted to digits like LN).
+3.2.1 Service Code Type Drives Which Sections Are Mandatory
+Service Code Type doesn’t just validate the Service Code field — it also determines which of the four routing sections (Carrier, MT Route, MO Route, DR Route) must be filled in before Save:
+If Service Code Type = LN: Carrier, MT Route, MO Route, and DR Route are all mandatory — a service code cannot be saved without at least one entry in each.
+If Service Code Type = SC: Carrier and MT Route become optional — they can be left empty. MO Route and DR Route remain mandatory regardless of type.
+3.2.2 Sender ID Source Depends on Service Code Type
+The Sender ID auto-filled into the Carrier and MT Route modals (see 3.3, 3.4) is not always the Campaign ID — its source depends on Service Code Type:
+LN: Sender ID = the service code’s Campaign ID.
+SC: Sender ID = the Service Code value itself (Campaign ID is not used as Sender ID for Short Codes).
+3.3 Carrier Section
+Table columns: Sender ID, Carrier Campaign ID, Carrier, TLV Tag ID, Action (Edit/Delete).
+Mandatory only for LN. For SC, this section is optional and can be left empty (see 3.2.1).
+Flow:
+User clicks the + icon to open the Add | Carrier modal.
+Sender ID is pre-filled and disabled (cannot be changed here). Its source depends on Service Code Type: for LN it is the Campaign ID; for SC it is the Service Code value itself (see 3.2.2).
+User enters a Carrier Campaign ID (free text).
+User selects a Carrier from a dropdown.
+TLV Tag ID is not a manually entered field in practice — it is driven by which Carrier is selected. Each Carrier has a TLV Tag ID mapped to it in the backend database; when the user picks a Carrier, its mapped TLV Tag ID is what’s shown. If a given Carrier has no TLV mapping, the field stays empty. It is not a freely-editable optional field independent of Carrier choice.
+Save adds the row to the Carrier table. Multiple carrier rows can be added per service code, each independently editable/deletable.
+3.4 MT Route Section (Outbound)
+Table columns: Sender ID, Network, Supplier, Action (Edit/Delete).
+Mandatory only for LN. For SC, this section is optional and can be left empty (see 3.2.1).
+Flow:
+User clicks + to open Add | MT Route.
+Sender ID auto-fills and is disabled. Same source rule as Carrier: LN → Campaign ID, SC → Service Code value (see 3.2.2).
+User selects a Network from a searchable dropdown (includes Default [ALL] plus specific named networks, each with a numeric ID, e.g. ACS Wireless [10112]).
+User selects a Supplier from a searchable dropdown. This list draws from the same customer/account master data used for the top-level Customer field (suppliers are shown with their account ID, e.g. 15BELOW LIMITED [83402]).
+Save adds the row. Multiple MT Route rows can exist per service code.
+3.5 MO Route Section (Inbound)
+Mandatory regardless of Service Code Type — unlike Carrier and MT Route, MO Route is always required whether the service code is LN or SC (see 3.2.1).
+This is the most conditionally complex section. It has two layers of branching: a top-level radio choice (None / Allow Forking) that governs keyword uniqueness, and an Endpoint Type choice (HTTP / SMPP) that governs which endpoint fields are shown and required.
+Step 1 — None vs Allow Forking (keyword uniqueness):
+None: a given keyword cannot be assigned to more than one customer account. Enforces keyword uniqueness across accounts.
+Allow Forking: the same keyword can be assigned to multiple customer accounts simultaneously (the inbound message “forks” to multiple destinations).
+Step 2 — Add MO Route modal, General block:
+User selects Customer (searchable dropdown, same master list).
+Customer Account dropdown activates and is filtered to only the accounts belonging to the Customer just selected (e.g. choosing “1 TO ALL CO LTD - 25348” restricts Customer Account options to the 25348-xxx accounts).
+User selects Keyword Type: ALL, Include, or Exclude.
+If ALL is selected, the Keyword field becomes disabled and is not required — ALL is intended to match every inbound keyword, so no specific value is needed.
+If Include or Exclude is selected, the Keyword field is enabled and must be filled in.
+Changing the Customer field inside this modal clears the rest of this MO Route entry’s details (Customer Account, etc.) — this reset is scoped to this MO Route row, and does not affect the top-level Service Code Customer (which is locked, see 3.1).
+Step 3 — Add MO Route modal, Endpoint block:
+Route Type is auto-set to MO and disabled — not user-editable.
+User selects Endpoint Type: HTTP or SMPP (single-select, mutually exclusive).
+If HTTP: a MO Endpoint URL field appears and is mandatory.
+If SMPP: an Endpoint Customer Account field appears instead of the URL field.
+Confirmed conditional rule: Endpoint Customer Account is only mandatory when Endpoint Type = SMPP and the Step 1 radio = Allow Forking. If Endpoint Type = SMPP and the radio = None, Endpoint Customer Account is shown but not required.
+Endpoint URL is not free text. The MO Endpoint URL (and DR Endpoint URL, see 3.6) field is a picklist sourced from the Customer Provisioning module — the available URL options depend entirely on what has already been configured for that customer over in Customer Provisioning. If nothing is configured there, the picklist will show no available options.
+3.6 DR Route Section (Delivery Receipt)
+Table columns: Customer, Customer Account, Endpoint Type, DR Endpoint URL, Endpoint Customer Account.
+Mandatory regardless of Service Code Type — same as MO Route, DR Route is always required whether the service code is LN or SC (see 3.2.1).
+Flow — structurally identical to MO Route’s General/Endpoint blocks, with one difference:
+The Add | DR Route modal’s General block does display Keyword Type and Keyword fields, but they are greyed out/disabled — DR Route does not use keyword-based routing, so these fields are present in the UI for layout consistency but are non-functional here. There is no None/Allow Forking radio on DR Route (that concept doesn’t apply without keywords).
+Customer Account is filtered to the selected Customer, same as MO Route.
+Endpoint Type is HTTP or SMPP:
+HTTP: DR Endpoint URL field, mandatory, sourced from Customer Provisioning (same picklist behavior as MO Route).
+SMPP: Endpoint Customer Account field instead.
+3.7 Save, Validation, and Record Actions
+Save on the Add/Edit Service Code form validates all mandatory fields across every section (Customer, Service Code Details, and any mandatory fields inside Carrier/MT/MO/DR rows that have been added). A required-field validation blocks Save if anything mandatory is missing.
+After Save, the record returns to the List View.
+View opens a read-only version of the full record and offers a Download Pdf button to export the configuration.
+Edit reopens the same form pre-populated, with the Customer field locked (see 3.1).
+Delete prompts a confirmation dialog (“Are you sure you want to delete?” — Yes/No) before removing the record.
+4. Functional / System-Level Behavior
+These are cross-cutting behaviors that apply across sections rather than to one field:
+Master data reuse: Customer, Supplier (MT Route), and Customer Account fields all draw from the same underlying customer/account master data — they are not separately maintained lists. An entity that exists as a “Customer” can also appear as a “Supplier” elsewhere in the form. Network (MT Route) is a separate database-sourced master list, distinct from the customer/account data.
+Cross-module dependency: Endpoint URL values (MO and DR) are not owned by Service Code Provisioning at all — they are configured in the Customer Provisioning module and merely surfaced here as a picklist. This means Service Code Provisioning cannot be fully configured for a customer until that customer’s endpoints exist in Customer Provisioning.
+Scoped resets: Field resets are scoped to the section they occur in. Changing Customer inside an MO Route or DR Route row clears only that row’s own dependent fields (Customer Account, etc.) — it does not cascade up to the top-level Service Code Customer or across to other sections like Carrier or MT Route.
+Immutable anchor field: The top-level Service Code Customer is the one field in the entire form that cannot be changed after creation. Every other field/section (Shared Customer, Campaign ID, Carrier, MT/MO/DR Route rows) can be added, edited, or removed after the fact.
+Static/non-functional field: Service Code Category always shows INCLUSIVE in the list view. It currently has no configurable behavior — it is not a rule engine input, just a displayed label.
+5. Decision Reference (Condensed)
+Service Code Type → Service Code format:
+LN → exactly 11 digits, numeric only, no decimals, no letters/characters
+SC → 5–6 characters, alphanumeric allowed
+Service Code Type → which sections are mandatory:
+LN → Carrier, MT Route, MO Route, DR Route all mandatory
+SC → Carrier and MT Route optional; MO Route and DR Route still mandatory
+Service Code Type → Sender ID source (Carrier and MT Route):
+LN → Sender ID = Campaign ID
+SC → Sender ID = Service Code value
+Add Campaign → Campaign ID field type:
+Checked → free text (new campaign)
+Unchecked → dropdown, filtered by Service Code Type
+Keyword Type (MO Route only) → Keyword field:
+ALL → disabled, not required
+Include / Exclude → enabled, required
+MO Route radio → keyword uniqueness:
+None → keyword unique per account (no reuse)
+Allow Forking → keyword can be reused across accounts
+Endpoint Type (MO and DR Route) → visible field:
+HTTP → Endpoint URL (mandatory, picklist from Customer Provisioning)
+SMPP → Endpoint Customer Account
+Endpoint Type + MO Route radio → Endpoint Customer Account requirement:
+SMPP + Allow Forking → mandatory
+SMPP + None → optional/shown but not required
+HTTP (either radio) → not applicable, URL field shown instead
+Shared checkbox → Shared Customer field:
+Checked → mandatory
+Unchecked → disabled, not used
+6. Glossary
+SCP — Service Code Provisioning (this module’s short name)
+LN — Long Number (Service Code Type). This is the 10DLC service code type — same thing, different label. See Sections 9–23 for the full 10DLC architecture.
+SC — Short Code (Service Code Type)
+MT — Mobile Terminated (outbound route, network/supplier configuration)
+MO — Mobile Originated (inbound route, keyword-based)
+DR — Delivery Receipt (routes delivery confirmation back to the customer)
+TLV — Tag-Length-Value (an optional carrier-level tag field)
+HTTP / SMPP — the two supported endpoint delivery mechanisms for MO/DR routes
+Sender ID — the identifier tied to a Campaign ID, used to key Carrier and MT Route rows
+Allow Forking — MO Route setting permitting one keyword to route to multiple customer accounts simultaneously
+7. Business Rules Table (Reference)
+8. Screen Inventory (What Exists Where)
+PART B — 10DLC Provisioning & API Architecture
+This part covers the 10DLC-specific provisioning architecture and API layer underneath Service Code Type = LN: the microservices involved, the Campaign Link/Unlink APIs, the provisioning and de-provisioning workflows, Route Templates, Brand ID/Sub-ID rules, TCR Campaigns, and number procurement. Source: internal document “10DLC Service Code Functionality — A Comprehensive Reference” (prepared by Vinay Kumar Sharma, Vintelix, for Tata Communications).
+9. What Is a 10DLC Service Code
+A 10DLC “service code” is the combination of a 10-digit long code phone number and a TCR-registered campaign, provisioned so a business can send application-to-person (A2P) messaging traffic that carriers recognize as legitimate rather than blocking as spam.
+A service code record ties together: a 10DLC phone number, a TCR campaign (which itself carries a Route Template and an Active flag), a customer, an optional Sub ID, a channel (SMS or MMS), and a provisioning status.
+Once this release is live, Service Code Type will include: 10DLC (= today’s LN), Toll Free (new), and Short Code (= today’s SC).
+10. System Architecture
+Four microservices are involved end to end:
+All asynchronous provisioning is mediated by RabbitMQ; every consumer shares a common retry policy — exponential backoff (60s → 300s, 10x multiplier) for retryable errors, with a dead-letter queue and alerting once retries are exhausted.
+11. Service Code Status Lifecycle
+A service code has two independent lifecycles — provisioning and de-provisioning — each driven by a separate API, and each capable of stalling on failure rather than silently succeeding.
+A critical property of this design: if any applicable task fails after its retries are exhausted, the overall status remains PROVISIONING (or DECOMMISSIONING) indefinitely — it never silently reaches READY or DECOMMISSIONED. A customer or operator cannot mistake a partially-failed provisioning for a fully active service code, because the status mechanism itself will not allow it.
+11.1 Action Icons by Status
+Delete and Decommission occupy the same position and are mutually exclusive by state — Delete is only present in NEW; it disappears (not just disables) once a record leaves that state, replaced by Decommission.
+12. Creating a Service Code
+12.1 Via API — Campaign Link
+PUT /v1/campaign, fronted by the Order Service. Request payload: requestId, defaultEndpoints (drEndpointUrl, moEndpointUrls[]), and campaigns[] (linkId, campaignId, longCode, subCustomer, tcUrl, overrideEndpoints). Campaign Unlink (DELETE /v1/campaign) uses the identical payload shape, additionally accepting a flat numbers[] array.
+Request-level validation (fail-fast, whole request rejected):
+Provisioning flow disabled for the customer
+Invalid/unauthorized API key
+Customer not found or inactive
+No webhook configured
+Invalid default endpoints
+Concurrent provisioning flow already running for the same number — the second Link request is rejected outright
+Per-campaign validation (partial failure, HTTP 207 multi-status):
+Campaign not found in CM_TCR_CAMPAIGN, or found but Active = false (treated identically to not found)
+Brand ID / Sub-ID missing where required (Section 15)
+TC URL invalid
+DB save error, or MMX mapping failure (MMS-channel only)
+12.2 Via the MMX Portal — Add | Service Code
+The Add/Edit form has six panels. Creating a record this way calls the identical Campaign Link API internally — Source shows MANUAL rather than API, but the downstream workflow is the same.
+Customer & Sharing: A service code can be shared with additional customers at creation. This does not create one shared record — it creates N independent records, one per customer, each firing its own Campaign Link API call when provisioning starts. If one customer’s flow fails, the others are unaffected.
+Service Code Details: Channel (SMS/MMS, single-select), Service Code Type, Campaign ID (searchable dropdown of existing TCR campaigns only), and Service Code.
+Carrier Panel: Sender ID, Carrier Campaign ID (manually entered, not auto-populated from OSR), Carrier (a broad master list of carriers/networks, not limited to the four OSR carriers), and TLV Tag ID (reference-only, not functionally validated). Carrier entries here have no relationship to the campaign’s Route Template carrier set.
+MT Route Panel: Sender ID, Network, Supplier. For SMS, this is genuine routing configuration. For MMS, Network and Supplier must be set to “All Network” and “Advance Gateway” respectively — enforced server-side, returning a validation error on Save if violated, not a disabled control. This reflects that MMS routing is actually handled inside Advance Gateway; MMX models Advance Gateway as a supplier purely so its existing supplier-based architecture keeps working uniformly across SMS and MMS. MT Route does not appear in the Campaign Link API payload at all.
+MO Route Panel:
+Keyword Type: ALL, Include, or Exclude. Keyword is disabled/irrelevant when ALL is selected.
+Multiple keyword/URL pairs are supported per service code. Keywords are case-sensitive and cannot repeat within a request.
+A single entry with the keyword omitted acts as a catch-all for anything not otherwise matched — at most one catch-all entry is allowed, same uniqueness rule as named keywords.
+Endpoint Type: HTTP or SMPP. HTTP maps directly to a moEndpointUrls[] entry in the API payload, with the URL itself a searchable dropdown scoped to the selected Customer Account. SMPP routes account-to-account within MMX and has no API representation — it is not something the Campaign Link API can configure.
+“Allow Forking” is a UI-only option; the API does not support it.
+DR Route Panel:
+Unlike MO, Keyword Type and Keyword are disabled entirely — DR does not do keyword-based matching.
+Endpoint Type: HTTP maps directly to drEndpointUrl in the API payload. SMPP, as with MO, is account-to-account within MMX and has no API representation.
+Save vs. Save and Start Provisioning:
+13. The Provisioning Workflow
+Once a Campaign Link request is accepted, the background workflow runs as a sequence of named tasks, visible in the MMX Provisioning Status view with per-task Status (COMPLETED, SKIPPED, or ERROR), timestamps, and a Properties JSON payload.
+Confirmed from the source diagram (Figure 2), the full ordered task sequence is: Initialize Flow → Add 10DLC Code → Register NetNumber → Carrier Registration → Add MMS Routing → Register with MMX → Routing Testing → Notify Customer. (A companion architecture diagram condenses this into 7 named stages — INIT_FLOW, ADD_10DLC_CODE, OSR_REGISTER_NETNUMBER, ADD_MMS_ROUTING, MMX_REGISTER, ROUTING_TESTING, NOTIFY_CUSTOMER — with NetNumber and the three carrier registrations (T-Mobile, Sinch, AT&T) grouped under the OSR_REGISTER_NETNUMBER stage; both views describe the same underlying flow.)
+Carrier Registration is conditional — which carriers are actually called depends on the campaign’s Route Template (Section 14); non-applicable carriers show status SKIPPED, not absent. Add MMS Routing is itself skipped entirely for SMS-only campaigns. “Register with MMX” is, today, the single point at which this workflow touches MMX — every other step runs on INFORM/OSR alone. Routing Testing is the step that actually finalizes status — completing it sets the record to READY (or, on the de-provisioning side, the DECOMMISSIONED-equivalent state); it is not a cosmetic check.
+A task can carry a non-empty errorMessage in its Properties even after ultimately reaching COMPLETED, if it succeeded only after one or more retries — Status alone doesn’t tell the whole story; Properties is worth checking even on an apparently clean run.
+Confirmed from the source diagram (Figure 1): a task’s retries are considered exhausted after 3 attempts — at that point the overall record status freezes at PROVISIONING (or DECOMMISSIONING) rather than proceeding, exactly as described above. Resubmit (Section 18) is what moves it forward from there.
+14. Route Templates & Carrier Registration
+Route Template is a property of the TCR Campaign itself, set once at campaign creation — it is not a field in the Campaign Link request. The system looks up the campaign’s own Route Template value; the caller does not specify it.
+Confirmed correction: SINCH and SINCH_DIRECT are not behaviorally identical despite the similar naming, and no carrier is universal across all four templates — T-Mobile, for instance, is absent from SINCH specifically. This was confirmed directly with the development team; an earlier round of documentation and test design had SINCH conflated with SINCH_DIRECT as both registering to all three carriers, which was incorrect.
+NetNumber registration has been confirmed, via test execution, to occur unconditionally across all four Route Templates — it is independent of the carrier-specific columns above.
+15. Brand ID & Sub-ID Rules
+Brand ID is a TCR/Campaign Registry concept — it identifies the business entity for compliance and trust-scoring purposes, and matters specifically for AT&T-inclusive registration. Sub-ID is a distinct, T-Mobile-specific concept: T-Mobile caps a standard campaign at 49 phone numbers unless the customer has an approved Number Pool, tracked via a Sub ID. “SubID enabled” at the customer level effectively means “this customer has an approved T-Mobile Number Pool.” Net Number ID (NNID) is a separate identifier again, confirmed not required to be unique across customers — two different customers may share the same NNID.
+16. TCR Campaigns
+The TCR Campaigns screen is where campaigns are actually created and where CM_TCR_CAMPAIGN — the table the Campaign Link API validates a campaignId against — is populated. Campaign ID is confirmed globally unique, not just unique per customer.
+Route Template is set here, at campaign creation, and can be edited later — it is a property of the campaign, not the linking request.
+Active must be true for a campaign to be successfully referenced in a Campaign Link request; Active = false is rejected identically to a campaign that doesn’t exist at all.
+A campaign can be linked to multiple service codes concurrently — there is no exclusivity constraint.
+Decommissioning a service code releases its campaign for reuse — the campaign is not permanently consumed by having been linked once. The same campaign can be re-linked to the same service code, or a different one, after decommissioning.
+17. De-provisioning a Service Code
+Campaign Unlink accepts numbers via campaigns[] (longCode + campaignId) and/or a flat numbers[] array, merged into one list. Each number is validated synchronously (exists, is a 10DLC number, owned by the requesting customer), then de-provisioned in the background.
+Request flow (confirmed from the full-detail diagram, Figure 5):
+Customer sends request: DELETE /v1/campaign over HTTPS. Numbers can arrive inside campaigns[] (with longCode/campaignId detail), as a flat numbers[] list, or both combined into one merged list.
+Order Service receives and prepares (front-door service): merges campaigns[] and numbers[] into one flat list; validates the merged list is sized between 1 and 100 (otherwise 400 Bad Request); retrieves the customer’s API key from the security context; forwards the cleaned request on to the backend 10DLC service.
+Backend service validates and processes: runs a security/config check (action allowed, system accepting requests, API key valid, webhook configured — any failure rejects with 400/500); builds a working context (customer config, channel, an internal “UnlinkContext” workspace); then validates each number one by one — does it exist in the DB (else “Code not found”), is it actually a 10DLC number (else “Type mismatch”), does this customer own it (else “Invalid customer combination”). Valid numbers are queued for decommissioning; invalid ones get their error recorded and are excluded from further processing.
+Immediate synchronous response: the customer does not wait for carrier unregistration — they get an immediate response. All-valid → HTTP 202 Accepted (requestId, acceptedCount, invalidCount: 0). Mixed valid/invalid → HTTP 207 Multi-Status, with per-number error detail in a registrationError[]-style array for the numbers that failed validation. Only the valid numbers proceed to background processing.
+Background async processing: the background workflow runs five unregister tasks in parallel per number — Remove from NetNumber, Remove T-Mobile, Remove Sinch, Remove AT&T, and Remove MMS Config — each telling that respective system the number is no longer part of the campaign. All five must succeed before the number record is actually deleted from the database, any billing Sub-ID is released back to the pool, and status is updated to DECOMMISSIONED. A failure in any one task holds the record in its current state rather than partially decommissioning it. Once all five complete, a webhook notifies the customer that the number has been unlinked.
+Worth noting: a second Unlink request for a number already mid-de-provisioning is accepted but does not trigger a second decommissioning flow — it is a no-op, not a rejection. This differs from Campaign Link’s behavior, where a concurrent request for the same number is rejected outright. Whether Unlink actually skips unregister tasks for carriers that were never registered in the first place (based on the original Route Template) is not yet confirmed — it may fire all five tasks unconditionally regardless of what was actually registered.
+18. Error Handling & Recovery — Resubmit
+PUT /prov-flow/tasks. Available on any task with Status = ERROR, regardless of task type — provisioning or de-provisioning, any step. The form pre-fills Provisioning Flow Type, Task Type, and Provisioning Flow Key (format: {longCode}-{date}-{sequence}) for the selected task; submitting resumes the flow from that point. The submitting user’s identity is recorded against the action. This is a manual, explicitly-invoked recovery path — not part of the automated flow — and is the mechanism by which a task stuck at ERROR after exhausting its automatic retries (3 attempts, per Section 13) is resolved.
+19. Customer Onboarding Prerequisites
+Several fields on the Customer record govern how service code provisioning behaves for that customer:
+20. The Number Procurement Flow
+Number procurement (search and purchase, via the Order Service and Commio/ThinQ) is a separate, parallel path from campaign linking — a customer must first procure a 10DLC number before it can be linked to a campaign as a service code.
+Confirmed from the source diagram (Figure 3), the end-to-end flow runs:
+API entry point: POST /v1/numbers/procure. Customer sends a procurement request with NPA/NXX or State/RateCenter, Quantity, Purchase Type, and Preference. Immediate response: HTTP 202 Accepted plus a requestId.
+Validation & Enqueue: an idempotency check against Redis, customer validation (via a webhook for ORDER events), resolving purchase-preference business rules, then publishing the search request to RabbitMQ.
+Search Numbers: calls the ThinQ/Commio API to search available numbers and applies business filters (quantity, continuous-block requirements). This branches two ways: a search-only request sends a webhook back to the customer with results; a create-order request forwards to order creation.
+Create Order (ThinQ/Commio): converts the found numbers into ThinQ/Commio TN objects, configures features (CNAM, SMS, E911), and calls the ThinQ/Commio Create Order API.
+Complete Order: calls the ThinQ/Commio Complete Order API to finalize the purchase, prepares the order result (status, numbers, timestamps), and sends a webhook to the customer with the order result. If Kaleyra Numbers API is enabled for the customer, proceeds to step 6; otherwise the flow ends here.
+Subscribe Numbers (optional): fetches customer fees from the Customer Management API and calls the Kaleyra.io bulk-subscription API to register the numbers on the Kaleyra platform.
+Every consumer in this flow shares the same retry pattern used elsewhere in the system: retryable errors (HTTP 429, 500, 503, 504) retry with exponential backoff (60s → 300s max, 10x multiplier); non-retryable errors or exhausted retries route to a dead-letter queue with centralized error handling and alerting.
+21. Reference Diagrams — Full Detail
+Two additional diagrams (Figures 4 and 5 in the source document) show the complete Campaign Link and Campaign Unlink flows at full architectural detail — request validation, database persistence, and the full background workflow. No images are included here; their content is transcribed in full below:
+Campaign Linking, full detail (Figure 4): the backend pipeline runs five stages — Pre-Validation (customer, customer status, campaign count 1–100, customer configuration, NNID, Route Template), Build Provisioning Context, Process Each Campaign (channel determination, DR/MO endpoint configuration, mandatory field validation, TCR campaign verification against CM_TCR_CAMPAIGN, Brand ID/Billing Sub-ID/NNID population), Save to Database (status set to PROVISIONING, persistence error handling), and Create Async Provisioning Task (published to the ACTIVATE_10DLC RabbitMQ queue). The immediate API response is HTTP 202 Accepted whether all campaigns validated successfully or only some did (partial validity still returns 202, with requestId, acceptedCount, invalidCount, and a registrationError[] array for any invalid entries) — the API responds immediately and provisioning continues in the background, with final status delivered later via webhook. A separate four-part error taxonomy covers: request-level validation errors (fail fast, before any work, rejecting the whole request), per-campaign validation errors (partial failure, HTTP 207 multi-status), async task errors within RabbitMQ (retryable vs. non-retryable, per task per number), and customer notification after all tasks complete (webhook with COMPLETE or ERROR status, with its own failure/retry handling if the webhook call itself fails).
+Campaign Unlink, full detail (Figure 5): matches the narrative in Section 17, with confirmed internal queue names for the five parallel unregister tasks — NetNumber, T-Mobile, Sinch, AT&T, and MMS Config each run on their own queue and can retry independently with their own delay queues where applicable.
+22. Known Edge Cases & Open Items
+These are open items flagged by the source 10DLC document’s own author as unconfirmed — genuinely unresolved questions, not settled behavior:
+23. Glossary — 10DLC / API Terms
+10DLC — “10-Digit Long Code”: a US long number registered with a TCR campaign for A2P messaging. Confirmed equivalent to today’s LN Service Code Type.
+TCR — The Campaign Registry system that campaigns are registered against; CM_TCR_CAMPAIGN is the table the Campaign Link API validates against.
+A2P — Application-to-Person messaging.
+Route Template — A property of the TCR Campaign (not the Campaign Link request) that determines which carriers (T-Mobile, Sinch, AT&T) a number registers with.
+Brand ID — TCR/Campaign Registry identifier for the business entity; required for Reseller customers on AT&T-inclusive Route Templates.
+Sub-ID — T-Mobile Number Pooling identifier; required when a customer’s campaign exceeds T-Mobile’s 49-number cap and has an approved Number Pool.
+NNID (Net Number ID) — A separate identifier from Brand ID/Sub-ID; not required to be unique across customers.
+OSR — The service responsible for carrier registration/unregistration.
+Campaign Link / Unlink — The API (PUT / DELETE /v1/campaign) that provisions or de-provisions a service code’s carrier registration.
+ACTIVATE_10DLC — The name of the RabbitMQ queue that async provisioning tasks are published to after Campaign Link validation succeeds.
+SHORTCODE table — The internal database table that stores the 10DLC code’s link to campaign and customer_id (naming is historical/internal — it stores 10DLC records too, not only short codes).
+UnlinkContext — An internal in-memory workspace object built during Campaign Unlink processing, holding the request DTO, customer config, source, channel, and a campaign/Sub-ID map for the numbers being processed.
+DID / TN — Telecom industry terms for a phone number object (Direct Inward Dial / Telephone Number) as represented in the ThinQ/Commio ordering API.
+ThinQ/Commio — The upstream carrier/number-inventory vendor the Order Service calls to search, create, and complete number purchase orders.
+Kaleyra.io — A downstream messaging platform that purchased numbers can optionally be bulk-subscribed into, if the customer has Kaleyra Numbers API enabled.
+NPA/NXX — US telecom area-code/exchange-code identifiers used to search for available numbers by geography.
+registrationError[] — The array field returned in a partial-failure API response (HTTP 207), containing per-entry error detail for whichever campaigns/numbers failed validation.
+Companion documents referenced but not incorporated here: INFORM_MMX_Architecture_Reference_v1.0.docx; 10DLC_Order_API_Test_Cases.xlsx; 10DLC_Campaign_Link_Unlink_Test_Cases.xlsx; 10DLC_Service_Code_Provisioning_Test_Cases.xlsx; 10DLC_TCR_Campaigns_Test_Cases.xlsx; 10DLC_Customer_Onboarding_Test_Cases.xlsx — these exist per the source document but their content has not been reviewed or merged into this reference.
+Source diagrams: five figures from the original document (status lifecycle, provisioning workflow, number procurement flow, and full-detail Campaign Link/Unlink architecture) were reviewed directly rather than only read as text, and their content has been written out in full as prose/tables throughout Sections 9–23. No images are included in this document.
+This is the full combined document — portal-level business, functional, and UI flow (Sections 1–8), plus the underlying 10DLC provisioning and API architecture (Sections 9–23), sourced from confirmed screenshots, direct system testing, and the internal 10DLC reference document. Text only, no images. Review it — once approved, I’ll produce the final formatted document (Word/PDF, your call).
